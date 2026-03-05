@@ -2,130 +2,123 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
-import os
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="Auditoría MATO - Maestría", page_icon="☕", layout="wide")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Auditoría MATO - Café", page_icon="☕", layout="wide")
 
-# --- FUNCIONES DE PERSISTENCIA ---
-FILE_NAME = "database_mato_velez.csv"
-
-def guardar_datos(nuevo_registro):
-    df = pd.DataFrame([nuevo_registro])
-    if not os.path.isfile(FILE_NAME):
-        df.to_csv(FILE_NAME, index=False, sep=";")
-    else:
-        df.to_csv(FILE_NAME, mode='a', index=False, header=False, sep=";")
-
-# --- LÓGICA DE CÁLCULO (PESOS TEÓRICOS) ---
-# Se asignan pesos según importancia técnica para el objetivo de la maestría
-def calcular_puntajes(datos):
-    # Escala de 0 a 100
-    p_infra = (datos['Tolva_Material'] / 3) * 100
-    p_maquinaria = ((datos['Despulpado_Tec'] + datos['Despulpado_Calibracion']) / 6) * 100
-    p_proceso = ((datos['Fermentacion_Control'] / 2) * 0.5 + (datos['Secado_Tec'] / 4) * 0.5) * 100
-    
-    score_total = (p_infra * 0.2) + (p_maquinaria * 0.4) + (p_proceso * 0.4)
-    return round(score_total, 2), round(p_infra, 2), round(p_maquinaria, 2), round(p_proceso, 2)
-
-# --- INTERFAZ ---
-st.title("🔬 MATO: Modelo de Auditoría Técnico-Operativa")
+# --- ESTILOS PERSONALIZADOS ---
 st.markdown("""
-Esta herramienta evalúa el nivel de madurez tecnológica de los beneficiaderos de café. 
-*Provincia de Vélez, Santander.*
-""")
+    <style>
+    .main { background-color: #f5f5f5; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    </style>
+    """, unsafe_index=True)
 
-tabs = st.tabs(["📝 Captura de Datos", "📊 Análisis en Tiempo Real", "📂 Base de Datos Histórica"])
+# --- INICIALIZAR SESIÓN ---
+if 'db' not in st.session_state:
+    st.session_state['db'] = pd.DataFrame(columns=[
+        "Fecha", "Finca", "Municipio", "IMT_Total", "Infraestructura", "Maquinaria", "Procesos"
+    ])
 
-with tabs[0]:
-    with st.form("main_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("📍 Identificación")
+# --- LÓGICA DE CÁLCULO CIENTÍFICO ---
+def calcular_metricas(datos):
+    # Ponderaciones sugeridas para una tesis (puedes ajustarlas)
+    p_infra = (datos['tolva'] / 3) * 100
+    p_maq = ((datos['desp_tec'] + datos['desp_cal']) / 6) * 100
+    p_proc = ((datos['ferm'] + datos['secado']) / 6) * 100
+    
+    # Índice de Madurez Tecnológica (IMT) - Promedio ponderado
+    imt = (p_infra * 0.20) + (p_maq * 0.40) + (p_proc * 0.40)
+    return round(imt, 1), round(p_infra, 1), round(p_maq, 1), round(p_proc, 1)
+
+# --- INTERFAZ PRINCIPAL ---
+st.title("🔬 Sistema de Auditoría MATO")
+st.caption("Herramienta de recolección de datos para investigación de maestría - Provincia de Vélez")
+
+tab1, tab2 = st.tabs(["📝 Nueva Auditoría", "📊 Tablero de Resultados"])
+
+with tab1:
+    with st.form("form_investigacion"):
+        st.subheader("1. Información de Campo")
+        c1, c2, c3 = st.columns(3)
+        with c1:
             finca = st.text_input("Nombre de la Finca / Productor")
-            municipio = st.selectbox("Municipio", ["Vélez", "Guavatá", "Jesús María", "La Belleza", "Chipatá"])
-            coordenadas = st.text_input("Coordenadas GPS (Lat, Long)", placeholder="6.0123, -73.6789")
-        
-        with col2:
-            st.subheader("📈 Capacidad")
-            volumen = st.number_input("Volumen Pico (Kg Cereza/día)", min_value=0)
-            variedad = st.multiselect("Variedades", ["Castillo", "Cenicafé 1", "Colombia", "Típica", "Borbón"])
+        with c2:
+            municipio = st.selectbox("Municipio", ["Vélez", "Guavatá", "Jesús María", "Chipatá", "La Belleza"])
+        with c3:
+            volumen = st.number_input("Producción (Kg Cereza/Día)", min_value=0)
 
         st.divider()
+        st.subheader("2. Dimensiones Técnicas")
         
-        col3, col4, col5 = st.columns(3)
-        with col3:
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
             st.markdown("**Infraestructura**")
-            tolva = st.radio("Material Tolva", [1, 2, 3], format_func=lambda x: ["Madera", "Cemento", "Acero/Epóxico"][x-1])
-        
-        with col4:
+            tolva = st.radio("Estado Tolvas", [1, 2, 3], 
+                             help="1: Madera, 2: Cemento, 3: Acero/Epóxico")
+        with col_b:
             st.markdown("**Maquinaria**")
-            d_tec = st.selectbox("Tecnología Despulpado", [1, 2, 3], format_func=lambda x: ["Tradicional", "Cilindro", "Ecológico BECO"][x-1])
-            d_cal = st.select_slider("Estado de Calibración", options=[1, 2, 3], value=2)
+            d_tec = st.selectbox("Tecnología Despulpado", [1, 2, 3], format_func=lambda x: ["Tradicional", "Cilindro", "Ecológica"][x-1])
+            d_cal = st.select_slider("Calibración", options=[1, 2, 3])
+        with col_c:
+            st.markdown("**Procesos**")
+            ferm = st.radio("Fermentación", [1, 2, 3], help="1: Empírica, 2: Lavado simple, 3: Controlada (pH)")
+            secado = st.selectbox("Secado", [1, 2, 3], format_func=lambda x: ["Suelo", "Marquesina", "Mecánico"][x-1])
 
-        with col5:
-            st.markdown("**Proceso de Calidad**")
-            ferm = st.radio("Control Fermentación", [1, 2], format_func=lambda x: ["Empírico", "Instrumentado (pH/Fermaestro)"][x-1])
-            sec = st.selectbox("Tecnología Secado", [1, 2, 3, 4], format_func=lambda x: ["Suelo", "Marquesina", "Zarandas", "Silo"][x-1])
+        enviar = st.form_submit_button("Registrar Auditoría", type="primary")
 
-        submit = st.form_submit_button("Finalizar Auditoría y Calcular Índice", type="primary")
-
-    if submit:
+    if enviar:
         if not finca:
-            st.error("El nombre de la finca es requerido.")
+            st.warning("⚠️ Por favor ingresa el nombre de la finca.")
         else:
-            # Cálculos
-            dict_datos = {
-                "Tolva_Material": tolva, "Despulpado_Tec": d_tec, 
-                "Despulpado_Calibracion": d_cal, "Fermentacion_Control": ferm, "Secado_Tec": sec
+            # Calcular resultados
+            imt, p_inf, p_maq, p_proc = calcular_metricas({
+                'tolva': tolva, 'desp_tec': d_tec, 'desp_cal': d_cal, 
+                'ferm': ferm, 'secado': secado
+            })
+            
+            # Guardar en memoria
+            nuevo = {
+                "Fecha": datetime.now().strftime("%Y-%m-%d"),
+                "Finca": finca, "Municipio": municipio, "IMT_Total": imt,
+                "Infraestructura": p_inf, "Maquinaria": p_maq, "Procesos": p_proc
             }
-            total, p_inf, p_maq, p_proc = calcular_puntajes(dict_datos)
+            st.session_state['db'] = pd.concat([st.session_state['db'], pd.DataFrame([nuevo])], ignore_index=True)
             
-            registro = {
-                "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "Finca": finca, "Municipio": municipio, "Coordenadas": coordenadas,
-                "Volumen": volumen, "IMT_Total": total, "Infraestructura": p_inf,
-                "Maquinaria": p_maq, "Procesos": p_proc, 
-                "Raw_Data": str(dict_datos)
-            }
-            
-            guardar_datos(registro)
-            st.success(f"✅ Auditoría completada. Índice de Madurez Tecnológica: {total}%")
-            
-            # --- GRÁFICO DE RADAR PARA EL FEEDBACK INMEDIATO ---
-            categories = ['Infraestructura', 'Maquinaria', 'Procesos']
+            st.success(f"✅ Auditoría de '{finca}' registrada con éxito.")
+
+            # --- VISUALIZACIÓN RÁPIDA (RADAR) ---
             fig = go.Figure()
             fig.add_trace(go.Scatterpolar(
                 r=[p_inf, p_maq, p_proc],
-                theta=categories,
+                theta=['Infraestructura', 'Maquinaria', 'Procesos'],
                 fill='toself',
-                name=finca
+                name=finca,
+                line_color='#4E342E'
             ))
-            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), showlegend=True)
-            st.plotly_chart(fig)
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
 
-with tabs[1]:
-    st.subheader("Análisis Comparativo")
-    if os.path.isfile(FILE_NAME):
-        df_view = pd.read_csv(FILE_NAME, sep=";")
-        st.bar_chart(df_view.set_index("Finca")["IMT_Total"])
+with tab2:
+    if not st.session_state['db'].empty:
+        df = st.session_state['db']
         
-        avg_imt = df_view["IMT_Total"].mean()
-        st.metric("Promedio Regional IMT", f"{round(avg_imt, 2)}%")
-    else:
-        st.info("No hay datos para analizar aún.")
-
-with tabs[2]:
-    st.subheader("Gestión de Datos (Exportar para SPSS/Excel)")
-    if os.path.isfile(FILE_NAME):
-        df_hist = pd.read_csv(FILE_NAME, sep=";")
-        st.dataframe(df_hist)
+        # Métricas Globales
+        m1, m2 = st.columns(2)
+        m1.metric("Total Fincas Auditadas", len(df))
+        m2.metric("Promedio Madurez (IMT)", f"{round(df['IMT_Total'].mean(), 1)}%")
         
+        st.divider()
+        st.subheader("Datos recolectados")
+        st.dataframe(df, use_container_width=True)
+        
+        # Botón de Descarga
+        csv = df.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="Descargar Base de Datos Completa",
-            data=df_hist.to_csv(index=False).encode('utf-8'),
-            file_name=f"Auditoria_MATO_Master_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
+            label="📥 Descargar Base de Datos para Tesis (CSV)",
+            data=csv,
+            file_name=f"Auditoria_MATO_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
         )
     else:
-        st.warning("Archivo de base de datos no encontrado.")
+        st.info("Aún no hay datos registrados. Por favor completa el formulario.")
