@@ -1,127 +1,376 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from datetime import datetime
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="Auditoría MATO - Café", page_icon="☕", layout="wide")
+# -------------------------------
+# CONFIGURACIÓN GENERAL
+# -------------------------------
 
-# --- ESTILOS PERSONALIZADOS (Corregido: unsafe_allow_html) ---
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #ddd; }
-    </style>
-    """, unsafe_allow_html=True)
+st.set_page_config(
+    page_title="Auditoría Técnica MATO",
+    page_icon="☕",
+    layout="wide"
+)
 
-# --- INICIALIZAR MEMORIA TEMPORAL ---
-if 'db' not in st.session_state:
-    st.session_state['db'] = pd.DataFrame(columns=[
-        "Fecha", "Finca", "Municipio", "IMT_Total", "Infraestructura", "Maquinaria", "Procesos"
-    ])
+st.title("☕ Auditoría Técnica de Beneficiaderos de Café")
+st.markdown("### Evaluación del Nivel de Madurez Tecnológica (IMT)")
 
-# --- LÓGICA DE CÁLCULO ---
-def calcular_metricas(datos):
-    # Escala 0-100 por dimensión
-    p_infra = (datos['tolva'] / 3) * 100
-    p_maq = ((datos['desp_tec'] + datos['desp_cal']) / 6) * 100
-    p_proc = ((datos['ferm'] + datos['secado']) / 6) * 100
-    
-    # Índice de Madurez Tecnológica (IMT) con pesos ponderados
-    imt = (p_infra * 0.20) + (p_maq * 0.40) + (p_proc * 0.40)
-    return round(imt, 1), round(p_infra, 1), round(p_maq, 1), round(p_proc, 1)
+# -------------------------------
+# BASE DE DATOS EN MEMORIA
+# -------------------------------
 
-# --- TÍTULO Y EXPLICACIÓN ---
-st.title("🔬 Sistema de Auditoría MATO")
-st.caption("Herramienta de recolección de datos - Provincia de Vélez, Santander")
+if "base_datos" not in st.session_state:
+    st.session_state["base_datos"] = pd.DataFrame()
 
-tab1, tab2 = st.tabs(["📝 Nueva Auditoría", "📊 Tablero de Resultados"])
+# -------------------------------
+# FUNCIÓN DE CÁLCULO DEL IMT
+# -------------------------------
 
-with tab1:
-    with st.form("form_investigacion", clear_on_submit=True):
-        st.subheader("1. Información de Campo")
-        c1, c2 = st.columns(2)
+def calcular_puntuacion(respuestas):
+
+    d1 = (respuestas['r_tolva'] + respuestas['r_aseo']) / 6 * 100
+    d2 = (respuestas['r_tec_des'] + respuestas['r_calib'] + respuestas['r_perdida']) / 9 * 100
+    d3 = (respuestas['r_metodo_f'] + respuestas['r_control_f'] + respuestas['r_lavado']) / 9 * 100
+    d4 = (respuestas['r_tipo_sec'] + respuestas['r_humedad']) / 6 * 100
+    d5 = (respuestas['r_pulpa'] + respuestas['r_aguas_mieles']) / 6 * 100
+
+    imt = (d1*0.15) + (d2*0.25) + (d3*0.25) + (d4*0.20) + (d5*0.15)
+
+    return round(imt,2), round(d1,1), round(d2,1), round(d3,1), round(d4,1), round(d5,1)
+
+# -------------------------------
+# TABS PRINCIPALES
+# -------------------------------
+
+t1, t2 = st.tabs(["📋 Formulario de Auditoría", "📊 Análisis de Resultados"])
+
+# ======================================================
+# TAB 1 FORMULARIO
+# ======================================================
+
+with t1:
+
+    with st.form("formulario_auditoria"):
+
+        st.subheader("Identificación de la finca")
+
+        c1,c2,c3,c4,c5 = st.columns(5)
+
         with c1:
-            finca = st.text_input("Nombre de la Finca / Productor")
+            finca = st.text_input("Finca / Productor")
+
         with c2:
-            municipio = st.selectbox("Municipio", ["Vélez", "Guavatá", "Jesús María", "Chipatá", "La Belleza"])
-
-        st.divider()
-        st.subheader("2. Evaluación de Dimensiones")
-        
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            st.markdown("**Infraestructura**")
-            tolva = st.radio("Material Tolva", [1, 2, 3], 
-                             format_func=lambda x: ["Madera", "Cemento", "Acero/Epóxico"][x-1])
-        with col_b:
-            st.markdown("**Maquinaria**")
-            d_tec = st.selectbox("Tecnología Despulpado", [1, 2, 3], 
-                                 format_func=lambda x: ["Tradicional", "Cilindro", "Ecológica"][x-1])
-            d_cal = st.select_slider("Estado Calibración", options=[1, 2, 3], value=2)
-        with col_c:
-            st.markdown("**Procesos**")
-            ferm = st.radio("Control Fermentación", [1, 2, 3], 
-                            format_func=lambda x: ["Empírico", "Lavado", "pH/Fermaestro"][x-1])
-            secado = st.selectbox("Tecnología Secado", [1, 2, 3], 
-                                  format_func=lambda x: ["Patio/Suelo", "Marquesina", "Silo/Zarandas"][x-1])
-
-        enviar = st.form_submit_button("Registrar Auditoría", type="primary")
-
-    if enviar:
-        if not finca:
-            st.warning("⚠️ El nombre de la finca es obligatorio.")
-        else:
-            # Procesar datos
-            imt, p_inf, p_maq, p_proc = calcular_metricas({
-                'tolva': tolva, 'desp_tec': d_tec, 'desp_cal': d_cal, 
-                'ferm': ferm, 'secado': secado
-            })
-            
-            # Guardar
-            nuevo = {
-                "Fecha": datetime.now().strftime("%Y-%m-%d"),
-                "Finca": finca, "Municipio": municipio, "IMT_Total": imt,
-                "Infraestructura": p_inf, "Maquinaria": p_maq, "Procesos": p_proc
-            }
-            st.session_state['db'] = pd.concat([st.session_state['db'], pd.DataFrame([nuevo])], ignore_index=True)
-            
-            st.success(f"✅ Auditoría de '{finca}' registrada con éxito.")
-
-            # --- GRÁFICO DE RADAR ---
-            fig = go.Figure()
-            fig.add_trace(go.Scatterpolar(
-                r=[p_inf, p_maq, p_proc],
-                theta=['Infraestructura', 'Maquinaria', 'Procesos'],
-                fill='toself',
-                name=finca,
-                line_color='#795548'
-            ))
-            fig.update_layout(
-                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-                showlegend=True
+            municipio = st.selectbox(
+                "Municipio",
+                ["Vélez","Guavatá","Jesús María","Chipatá","La Belleza","Florián"]
             )
-            st.plotly_chart(fig, use_container_width=True)
 
-with tab2:
-    if not st.session_state['db'].empty:
-        df = st.session_state['db']
-        
-        # Métricas principales
-        m1, m2 = st.columns(2)
-        m1.metric("Fincas Auditadas", len(df))
-        m2.metric("Promedio Regional IMT", f"{round(df['IMT_Total'].mean(), 1)}%")
-        
+        with c3:
+            altura = st.number_input("Altitud (msnm)",500,2500,1500)
+
+        with c4:
+            latitud = st.number_input("Latitud",value=6.0,format="%.6f")
+
+        with c5:
+            longitud = st.number_input("Longitud",value=-73.5,format="%.6f")
+
         st.divider()
-        st.dataframe(df, use_container_width=True)
-        
-        # Exportación
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Descargar Base de Datos (CSV)",
-            data=csv,
-            file_name=f"Datos_MATO_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
+
+        # -----------------------
+        # DIMENSION 1
+        # -----------------------
+
+        st.subheader("1 Infraestructura")
+
+        c1,c2 = st.columns(2)
+
+        with c1:
+            r_tolva = st.select_slider(
+                "Calidad de Tolvas",
+                options=[1,2,3],
+                help="1 madera | 2 cemento | 3 acero"
+            )
+
+        with c2:
+            r_aseo = st.select_slider(
+                "Protocolos de higiene",
+                options=[1,2,3]
+            )
+
+        # -----------------------
+        # DIMENSION 2
+        # -----------------------
+
+        st.subheader("2 Despulpado")
+
+        c3,c4,c5 = st.columns(3)
+
+        with c3:
+            r_tec_des = st.selectbox(
+                "Tecnología",
+                [1,2,3],
+                format_func=lambda x: [
+                    "Pechero tradicional",
+                    "Cilindro horizontal",
+                    "Módulo ecológico"
+                ][x-1]
+            )
+
+        with c4:
+            r_calib = st.selectbox(
+                "Calibración",
+                [1,2,3],
+                format_func=lambda x:[
+                    "Descalibrada",
+                    "Aceptable",
+                    "Óptima"
+                ][x-1]
+            )
+
+        with c5:
+            r_perdida = st.selectbox(
+                "Pérdida de grano",
+                [1,2,3],
+                format_func=lambda x:[
+                    "Alta",
+                    "Media",
+                    "Mínima"
+                ][x-1]
+            )
+
+        # -----------------------
+        # DIMENSION 3
+        # -----------------------
+
+        st.subheader("3 Fermentación")
+
+        c6,c7,c8 = st.columns(3)
+
+        with c6:
+            r_metodo_f = st.selectbox(
+                "Tipo de tanque",
+                [1,2,3],
+                format_func=lambda x:[
+                    "Rectangular",
+                    "Circular",
+                    "Acero/plástico"
+                ][x-1]
+            )
+
+        with c7:
+            r_control_f = st.selectbox(
+                "Control de fermentación",
+                [1,2,3],
+                format_func=lambda x:[
+                    "Visual",
+                    "Tiempo",
+                    "Sensores"
+                ][x-1]
+            )
+
+        with c8:
+            r_lavado = st.selectbox(
+                "Sistema de lavado",
+                [1,2,3],
+                format_func=lambda x:[
+                    "Correteo",
+                    "Tanque",
+                    "Lavadora"
+                ][x-1]
+            )
+
+        # -----------------------
+        # DIMENSION 4
+        # -----------------------
+
+        st.subheader("4 Secado")
+
+        c9,c10 = st.columns(2)
+
+        with c9:
+            r_tipo_sec = st.selectbox(
+                "Sistema de secado",
+                [1,2,3],
+                format_func=lambda x:[
+                    "Patio",
+                    "Marquesina",
+                    "Silo"
+                ][x-1]
+            )
+
+        with c10:
+            r_humedad = st.selectbox(
+                "Control humedad",
+                [1,2,3],
+                format_func=lambda x:[
+                    "Al tanteo",
+                    "Manual",
+                    "Digital"
+                ][x-1]
+            )
+
+        # -----------------------
+        # DIMENSION 5
+        # -----------------------
+
+        st.subheader("5 Gestión ambiental")
+
+        c11,c12 = st.columns(2)
+
+        with c11:
+            r_pulpa = st.selectbox(
+                "Manejo pulpa",
+                [1,2,3],
+                format_func=lambda x:[
+                    "Botadero",
+                    "Fosa",
+                    "Compostaje"
+                ][x-1]
+            )
+
+        with c12:
+            r_aguas_mieles = st.selectbox(
+                "Tratamiento aguas mieles",
+                [1,2,3],
+                format_func=lambda x:[
+                    "Vertimiento directo",
+                    "Pozo",
+                    "Sistema tratamiento"
+                ][x-1]
+            )
+
+        boton = st.form_submit_button("Guardar auditoría")
+
+    # ----------------------------------------------------
+
+    if boton:
+
+        if finca == "":
+            st.error("Debe ingresar el nombre de la finca")
+
+        else:
+
+            respuestas = {
+                'r_tolva': r_tolva,
+                'r_aseo': r_aseo,
+                'r_tec_des': r_tec_des,
+                'r_calib': r_calib,
+                'r_perdida': r_perdida,
+                'r_metodo_f': r_metodo_f,
+                'r_control_f': r_control_f,
+                'r_lavado': r_lavado,
+                'r_tipo_sec': r_tipo_sec,
+                'r_humedad': r_humedad,
+                'r_pulpa': r_pulpa,
+                'r_aguas_mieles': r_aguas_mieles
+            }
+
+            imt,d1,d2,d3,d4,d5 = calcular_puntuacion(respuestas)
+
+            nuevo = {
+                "Fecha":datetime.now(),
+                "Finca":finca,
+                "Municipio":municipio,
+                "Altitud":altura,
+                "Latitud":latitud,
+                "Longitud":longitud,
+                "IMT":imt,
+                "Infraestructura":d1,
+                "Maquinaria":d2,
+                "Fermentacion":d3,
+                "Secado":d4,
+                "Ambiental":d5
+            }
+
+            st.session_state["base_datos"] = pd.concat(
+                [st.session_state["base_datos"],pd.DataFrame([nuevo])],
+                ignore_index=True
+            )
+
+            st.success(f"Auditoría guardada — IMT: {imt}%")
+
+            fig = go.Figure()
+
+            fig.add_trace(go.Scatterpolar(
+                r=[d1,d2,d3,d4,d5],
+                theta=[
+                    "Infraestructura",
+                    "Maquinaria",
+                    "Fermentación",
+                    "Secado",
+                    "Ambiental"
+                ],
+                fill="toself"
+            ))
+
+            fig.update_layout(
+                polar=dict(radialaxis=dict(range=[0,100]))
+            )
+
+            st.plotly_chart(fig)
+
+# ======================================================
+# TAB 2 ANALISIS
+# ======================================================
+
+with t2:
+
+    if not st.session_state["base_datos"].empty:
+
+        df = st.session_state["base_datos"]
+
+        st.subheader("Indicadores generales")
+
+        c1,c2,c3 = st.columns(3)
+
+        c1.metric("Fincas evaluadas",len(df))
+
+        c2.metric("IMT promedio",round(df["IMT"].mean(),1))
+
+        c3.metric("IMT máximo",df["IMT"].max())
+
+        st.divider()
+
+        # ---------------------
+        # MAPA
+        # ---------------------
+
+        st.subheader("Mapa de beneficiaderos auditados")
+
+        fig = px.scatter_mapbox(
+            df,
+            lat="Latitud",
+            lon="Longitud",
+            hover_name="Finca",
+            hover_data=["Municipio","IMT"],
+            color="IMT",
+            size="IMT",
+            zoom=7,
+            height=500,
+            color_continuous_scale="YlGn"
         )
+
+        fig.update_layout(mapbox_style="open-street-map")
+
+        st.plotly_chart(fig,use_container_width=True)
+
+        st.divider()
+
+        st.subheader("Base de datos")
+
+        st.dataframe(df)
+
+        csv = df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            "Descargar datos CSV",
+            csv,
+            "datos_auditoria_mato.csv",
+            "text/csv"
+        )
+
     else:
-        st.info("No hay datos registrados todavía.")
+
+        st.info("Aún no hay auditorías registradas")
