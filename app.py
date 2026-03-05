@@ -2,150 +2,96 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from streamlit_js_eval import get_geolocation
+from streamlit_gsheets import GSheetsConnection
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Tesis Café - Vélez", page_icon="☕", layout="centered")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Tesis Café - Persistente", layout="centered")
 
-# --- CSS ROBUSTO (Anti-Modo Noche y optimizado para sol de campo) ---
+# URL de tu Google Sheet (Copia la tuya aquí)
+# IMPORTANTE: La hoja debe tener permisos de EDICIÓN para "Cualquier persona con el enlace"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/TU_ID_DE_HOJA_AQUÍ/edit?usp=sharing"
+
+# --- CONEXIÓN A GOOGLE SHEETS ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# --- CSS DE ALTA VISIBILIDAD ---
 st.markdown("""
     <style>
-    /* Forzar fondo claro y texto oscuro para legibilidad total */
     .stApp { background-color: #F4F1EE !important; }
-    h1, h2, h3, h4, p, label, span { color: #2D1B08 !important; font-family: 'sans-serif'; }
-    
-    /* Estilo de los Expanders (Secciones colapsables) */
-    .stExpander {
-        background-color: #FFFFFF !important;
-        border: 1px solid #D7CCC8 !important;
-        border-radius: 12px !important;
-        margin-bottom: 10px !important;
-    }
-    
-    /* Botones Grandes para el pulgar en celular */
-    .stButton>button {
-        width: 100% !important;
-        border-radius: 12px !important;
-        height: 4em !important;
-        background-color: #5D4037 !important;
-        color: #FFFFFF !important;
-        font-weight: bold !important;
-        border: none !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
-    }
-    
-    /* Inputs y Selectores */
-    .stTextInput>div>div>input, .stSelectbox>div>div, .stNumberInput>div>div>input {
-        background-color: #FFFFFF !important;
-        color: #2D1B08 !important;
-        border: 1px solid #D7CCC8 !important;
-    }
-
-    /* Ajuste para Radio Buttons en móvil */
-    .stRadio > div {
-        background-color: #FFFFFF !important;
-        padding: 15px !important;
-        border-radius: 10px !important;
-        border: 1px solid #E0E0E0 !important;
-    }
+    h1, h2, h3, label, p, span { color: #2D1B08 !important; }
+    .stButton>button { width: 100%; border-radius: 12px; height: 4em; background-color: #5D4037 !important; color: white !important; font-weight: bold; }
+    .stExpander { background-color: #FFFFFF !important; border: 1px solid #D7CCC8 !important; border-radius: 12px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- INICIALIZAR BASE DE DATOS ---
-if 'db_tesis' not in st.session_state:
-    st.session_state['db_tesis'] = pd.DataFrame()
+st.title("☕ Recolección Permanente")
+st.caption("Los datos se guardan automáticamente en la nube (Google Sheets)")
 
-# --- TÍTULO ---
-st.title("☕ Caracterización Técnica")
-st.caption("Instrumento de Investigación - Tesis de Maestría")
+# --- LÓGICA DE CAPTURA ---
+with st.expander("⚖️ Consentimiento", expanded=False):
+    consentimiento = st.checkbox("Acepto participar")
 
-# --- MENÚ DE NAVEGACIÓN ---
-menu = st.tabs(["📝 Recolección", "📊 Datos Guardados"])
+if consentimiento:
+    # GPS
+    if st.button("🌐 CAPTURAR GPS"):
+        loc = get_geolocation()
+        if loc:
+            st.session_state['gps'] = f"{loc['coords']['latitude']}, {loc['coords']['longitude']}"
+            st.success("Ubicación fijada")
+    
+    coords = st.text_input("Coordenadas", value=st.session_state.get('gps', ""))
 
-with menu[0]:
-    # Consentimiento Ético
-    with st.expander("⚖️ Consentimiento Informado", expanded=True):
-        st.write("Acepto que los datos recolectados se utilicen para fines académicos de tesis.")
-        consentimiento = st.checkbox("Acepto participar")
-
-    if consentimiento:
-        # GEOPOSICIÓN
-        st.subheader("📍 Geolocalización")
-        if st.button("🌐 CAPTURAR UBICACIÓN GPS"):
-            loc = get_geolocation()
-            if loc:
-                lat = loc['coords']['latitude']
-                lon = loc['coords']['longitude']
-                st.session_state['temp_gps'] = f"{lat}, {lon}"
-                st.success(f"Ubicación: {lat}, {lon}")
-            else:
-                st.error("Error: Activa el GPS y da permisos al navegador.")
+    with st.form("encuesta_permanente", clear_on_submit=True):
+        finca = st.text_input("Finca / Productor *")
+        muni = st.selectbox("Municipio", ["Vélez", "Guavatá", "Jesús María", "Chipatá", "La Belleza"])
+        hec = st.number_input("Hectáreas", 0.0, 100.0, 1.0)
         
-        coords = st.text_input("Coordenadas actuales", value=st.session_state.get('temp_gps', ""), placeholder="Pulsa el botón de arriba...")
+        st.markdown("**Tecnología y Proceso**")
+        maq = st.selectbox("Despulpado", ["Manual", "Motor", "Ecológico"])
+        ferm = st.selectbox("Fermentación", ["Tradicional", "Sumergida", "Anaeróbica"])
+        sec = st.selectbox("Secado", ["Patio", "Marquesina", "Silo"])
+        amb = st.radio("Ambiental", ["Sin tratamiento", "Pozo Séptico", "Filtro Verde"])
+        
+        enviar = st.form_submit_button("💾 GUARDAR PERMANENTE")
 
-        # FORMULARIO DE CARACTERIZACIÓN
-        with st.form("encuesta_tesis", clear_on_submit=True):
-            
-            with st.expander("👤 1. IDENTIFICACIÓN", expanded=True):
-                finca = st.text_input("Nombre de la Finca / Productor *")
-                municipio = st.selectbox("Municipio", ["Vélez", "Guavatá", "Jesús María", "Chipatá", "La Belleza", "Florián", "Bolívar", "Albania", "Puente Nacional"])
-                hectareas = st.number_input("Hectáreas totales en café", 0.0, 500.0, 1.0)
-
-            with st.expander("⚙️ 2. MAQUINARIA Y PROCESO"):
-                tipo_maq = st.selectbox("Tecnología de Despulpado", ["Manual", "Motor Tradicional", "Módulo Ecológico (BECO)"])
-                edad_maq = st.number_input("Antigüedad de la Maquina (Años)", 0, 80, 5)
-                metodo_ferm = st.selectbox("Método de Fermentación", ["Seco Tradicional", "Tanque Sumergido", "Anaeróbico (Bolsas/Tanque sellado)"])
-                lavado = st.selectbox("Técnica de Lavado", ["Canal de Correteo", "En Tanque", "Lavadora Mecánica"])
-
-            with st.expander("☀️ 3. SECADO Y CALIDAD"):
-                tipo_secado = st.selectbox("Sistema de Secado", ["Patio/Suelo", "Marquesina/Parabólico", "Silo (Mecánico)", "Zarandas"])
-                control_hum = st.radio("Control de Humedad", ["Al tacto/Oído", "Medidor Digital", "No realiza"])
-
-            with st.expander("🌳 4. GESTIÓN AMBIENTAL"):
-                manejo_pulpa = st.selectbox("Manejo de Pulpa", ["Botadero Abierto", "Abono Simple", "Lombricultura/Compostaje"])
-                manejo_aguas = st.radio("Tratamiento de Aguas Mieles", ["Sin tratamiento", "Pozo Séptico", "Sistema de Filtros/SMTA"])
-
-            st.divider()
-            enviar = st.form_submit_button("📥 GUARDAR EN MI BASE DE DATOS")
-
-        if enviar:
-            if not finca:
-                st.error("⚠️ El nombre de la finca es obligatorio.")
-            else:
-                nuevo_registro = {
+    if enviar:
+        if not finca:
+            st.error("Falta el nombre de la finca")
+        else:
+            try:
+                # 1. Leer datos actuales de la nube
+                existing_data = conn.read(spreadsheet=SHEET_URL, usecols=list(range(13)))
+                
+                # 2. Crear nueva fila
+                nuevo_registro = pd.DataFrame([{
                     "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "Finca": finca, "Municipio": municipio, "Coordenadas": coords,
-                    "Hectareas": hectareas, "Tec_Despulpado": tipo_maq, "Edad_Maq": edad_maq,
-                    "Fermentacion": metodo_ferm, "Lavado": lavado, "Secado": tipo_secado,
-                    "Control_Hum": control_hum, "Manejo_Pulpa": manejo_pulpa, "Ambiental": manejo_aguas
-                }
-                st.session_state['db_tesis'] = pd.concat([st.session_state['db_tesis'], pd.DataFrame([nuevo_registro])], ignore_index=True)
-                st.success(f"✅ ¡Registro de '{finca}' guardado!")
+                    "Finca": finca,
+                    "Municipio": muni,
+                    "Coordenadas": coords,
+                    "Hectareas": hec,
+                    "Tec_Despulpado": maq,
+                    "Edad_Maq": 0, # Puedes agregar el input si lo deseas
+                    "Fermentacion": ferm,
+                    "Lavado": "N/A",
+                    "Secado": sec,
+                    "Control_Hum": "N/A",
+                    "Manejo_Pulpa": "N/A",
+                    "Ambiental": amb
+                }])
+                
+                # 3. Concatenar y actualizar
+                updated_df = pd.concat([existing_data, nuevo_registro], ignore_index=True)
+                conn.update(spreadsheet=SHEET_URL, data=updated_df)
+                
+                st.success("✅ ¡Datos enviados a Google Sheets!")
                 st.balloons()
+            except Exception as e:
+                st.error(f"Error al guardar: {e}")
+                st.info("Asegúrate de que la hoja de Google sea pública para edición.")
 
-with menu[1]:
-    st.subheader("📊 Datos Acumulados")
-    if not st.session_state['db_tesis'].empty:
-        df = st.session_state['db_tesis']
-        st.write(f"Total registros: **{len(df)}**")
-        st.dataframe(df, use_container_width=True)
-        
-        st.divider()
-        
-        # --- BOTÓN DE DESCARGA (CORREGIDO) ---
-        csv = df.to_csv(index=False, sep=";").encode('utf-8-sig')
-        
-        st.download_button(
-            label="📥 DESCARGAR BASE DE DATOS (EXCEL/CSV)",
-            data=csv,
-            file_name=f"Datos_Tesis_Maestria_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
-        
-        if st.button("🗑️ Borrar Todo (Reiniciar Sesión)"):
-            st.session_state['db_tesis'] = pd.DataFrame()
-            st.rerun()
-    else:
-        st.info("Aún no tienes datos guardados en esta sesión.")
-
+# --- BOTÓN DE RESPALDO LOCAL ---
 st.divider()
-st.caption("Herramienta de Investigación - Facultad de Ciencias Agrarias")
+st.subheader("📊 Consulta de Avance")
+if st.button("🔄 Ver datos actuales en la nube"):
+    df_cloud = conn.read(spreadsheet=SHEET_URL)
+    st.dataframe(df_cloud)
