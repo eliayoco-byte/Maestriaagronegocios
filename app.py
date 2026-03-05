@@ -1,104 +1,131 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from datetime import datetime
+import os
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="MATO - Café", page_icon="☕", layout="centered")
+st.set_page_config(page_title="Auditoría MATO - Maestría", page_icon="☕", layout="wide")
 
-# --- INICIALIZAR MEMORIA TEMPORAL ---
-# Esto guarda los datos en la sesión actual mientras no cierres la pestaña
-if 'datos_recolectados' not in st.session_state:
-    st.session_state['datos_recolectados'] = pd.DataFrame(columns=[
-        "Fecha", "Finca", "Municipio", "Volumen_Pico_Kg", 
-        "Tolva_Material", "Despulpado_Tec", "Despulpado_Calibracion",
-        "Fermentacion_Control", "Secado_Tec"
-    ])
+# --- FUNCIONES DE PERSISTENCIA ---
+FILE_NAME = "database_mato_velez.csv"
 
-# --- ENCABEZADO ---
-st.title("☕ Auditoría MATO")
-st.markdown("Herramienta de captura de datos para la evaluación técnico-operativa de beneficiaderos de café en la provincia de Vélez.")
-
-# --- FORMULARIO DE CAPTURA ---
-with st.form("formulario_mato", clear_on_submit=True):
-    st.subheader("1. Datos Generales")
-    col1, col2 = st.columns(2)
-    with col1:
-        finca = st.text_input("ID / Nombre de la Finca *")
-    with col2:
-        municipio = st.selectbox("Municipio *", ["Vélez", "Guavatá", "Jesús María"])
-
-    st.subheader("2. Dimensión: Capacidad y Recepción")
-    volumen = st.number_input("Volumen pico de recolección (Kg de cereza/día)", min_value=0, step=10)
-    tolva = st.selectbox("Materiales de la Tolva/Tanques", [
-        "1 - Madera / Tierra (Riesgo alto)",
-        "2 - Cemento rústico",
-        "3 - Recubrimiento epóxico / Cerámica / Acero"
-    ])
-
-    st.subheader("3. Dimensión: Eficiencia Mecánica (Despulpado)")
-    despulpado_tec = st.selectbox("Tecnología de Despulpado", [
-        "1 - Pechero tradicional",
-        "2 - Cilindro dentado",
-        "3 - Módulo ecológico (BECO)"
-    ])
-    despulpado_cal = st.selectbox("Calibración y Desgaste", [
-        "1 - Camisa gastada / Descalibrada",
-        "2 - Estado aceptable",
-        "3 - Óptimo / Reciente"
-    ])
-
-    st.subheader("4. Dimensión: Control (Fermentación y Secado)")
-    fermentacion = st.selectbox("Método de punto de lavado (Fermentación)", [
-        "1 - Empírico (Tacto / Olor / Tiempo fijo)",
-        "2 - Instrumentado (Fermaestro / pH-metro)"
-    ])
-    secado = st.selectbox("Tecnología de Secado", [
-        "1 - Patio / Suelo",
-        "2 - Marquesina tradicional",
-        "3 - Marquesina con ventilación / Zarandas",
-        "4 - Silo mecánico"
-    ])
-
-    st.markdown("---")
-    # Botón de envío del formulario
-    submit_button = st.form_submit_button("Guardar Datos de Finca", type="primary")
-
-# --- LÓGICA AL GUARDAR ---
-if submit_button:
-    if finca.strip() == "":
-        st.error("⚠️ El nombre de la finca es obligatorio.")
+def guardar_datos(nuevo_registro):
+    df = pd.DataFrame([nuevo_registro])
+    if not os.path.isfile(FILE_NAME):
+        df.to_csv(FILE_NAME, index=False, sep=";")
     else:
-        # Extraer solo el número (código) de las respuestas para facilitar el análisis en SPSS/Excel
-        nuevo_registro = {
-            "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "Finca": finca,
-            "Municipio": municipio,
-            "Volumen_Pico_Kg": volumen,
-            "Tolva_Material": int(tolva[0]),
-            "Despulpado_Tec": int(despulpado_tec[0]),
-            "Despulpado_Calibracion": int(despulpado_cal[0]),
-            "Fermentacion_Control": int(fermentacion[0]),
-            "Secado_Tec": int(secado[0])
-        }
-        
-        # Añadir al DataFrame en memoria usando pd.concat
-        df_nuevo = pd.DataFrame([nuevo_registro])
-        st.session_state['datos_recolectados'] = pd.concat([st.session_state['datos_recolectados'], df_nuevo], ignore_index=True)
-        st.success(f"✅ ¡Datos de la finca '{finca}' guardados en la sesión temporal!")
+        df.to_csv(FILE_NAME, mode='a', index=False, header=False, sep=";")
 
-# --- VISUALIZACIÓN Y DESCARGA DE DATOS ---
-if not st.session_state['datos_recolectados'].empty:
-    st.markdown("### 📊 Datos Recolectados en esta Sesión")
-    st.dataframe(st.session_state['datos_recolectados'])
+# --- LÓGICA DE CÁLCULO (PESOS TEÓRICOS) ---
+# Se asignan pesos según importancia técnica para el objetivo de la maestría
+def calcular_puntajes(datos):
+    # Escala de 0 a 100
+    p_infra = (datos['Tolva_Material'] / 3) * 100
+    p_maquinaria = ((datos['Despulpado_Tec'] + datos['Despulpado_Calibracion']) / 6) * 100
+    p_proceso = ((datos['Fermentacion_Control'] / 2) * 0.5 + (datos['Secado_Tec'] / 4) * 0.5) * 100
     
-    # Convertir a CSV
-    csv = st.session_state['datos_recolectados'].to_csv(index=False, sep=";").encode('utf-8')
-    
-    # Botón de descarga
-    st.download_button(
-        label="📥 Descargar Base de Datos (CSV)",
-        data=csv,
-        file_name=f"Datos_MATO_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime="text/csv",
-    )
-    st.info("💡 Recuerda descargar tu CSV antes de cerrar la pestaña o actualizar la página.")
+    score_total = (p_infra * 0.2) + (p_maquinaria * 0.4) + (p_proceso * 0.4)
+    return round(score_total, 2), round(p_infra, 2), round(p_maquinaria, 2), round(p_proceso, 2)
+
+# --- INTERFAZ ---
+st.title("🔬 MATO: Modelo de Auditoría Técnico-Operativa")
+st.markdown("""
+Esta herramienta evalúa el nivel de madurez tecnológica de los beneficiaderos de café. 
+*Provincia de Vélez, Santander.*
+""")
+
+tabs = st.tabs(["📝 Captura de Datos", "📊 Análisis en Tiempo Real", "📂 Base de Datos Histórica"])
+
+with tabs[0]:
+    with st.form("main_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("📍 Identificación")
+            finca = st.text_input("Nombre de la Finca / Productor")
+            municipio = st.selectbox("Municipio", ["Vélez", "Guavatá", "Jesús María", "La Belleza", "Chipatá"])
+            coordenadas = st.text_input("Coordenadas GPS (Lat, Long)", placeholder="6.0123, -73.6789")
+        
+        with col2:
+            st.subheader("📈 Capacidad")
+            volumen = st.number_input("Volumen Pico (Kg Cereza/día)", min_value=0)
+            variedad = st.multiselect("Variedades", ["Castillo", "Cenicafé 1", "Colombia", "Típica", "Borbón"])
+
+        st.divider()
+        
+        col3, col4, col5 = st.columns(3)
+        with col3:
+            st.markdown("**Infraestructura**")
+            tolva = st.radio("Material Tolva", [1, 2, 3], format_func=lambda x: ["Madera", "Cemento", "Acero/Epóxico"][x-1])
+        
+        with col4:
+            st.markdown("**Maquinaria**")
+            d_tec = st.selectbox("Tecnología Despulpado", [1, 2, 3], format_func=lambda x: ["Tradicional", "Cilindro", "Ecológico BECO"][x-1])
+            d_cal = st.select_slider("Estado de Calibración", options=[1, 2, 3], value=2)
+
+        with col5:
+            st.markdown("**Proceso de Calidad**")
+            ferm = st.radio("Control Fermentación", [1, 2], format_func=lambda x: ["Empírico", "Instrumentado (pH/Fermaestro)"][x-1])
+            sec = st.selectbox("Tecnología Secado", [1, 2, 3, 4], format_func=lambda x: ["Suelo", "Marquesina", "Zarandas", "Silo"][x-1])
+
+        submit = st.form_submit_button("Finalizar Auditoría y Calcular Índice", type="primary")
+
+    if submit:
+        if not finca:
+            st.error("El nombre de la finca es requerido.")
+        else:
+            # Cálculos
+            dict_datos = {
+                "Tolva_Material": tolva, "Despulpado_Tec": d_tec, 
+                "Despulpado_Calibracion": d_cal, "Fermentacion_Control": ferm, "Secado_Tec": sec
+            }
+            total, p_inf, p_maq, p_proc = calcular_puntajes(dict_datos)
+            
+            registro = {
+                "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Finca": finca, "Municipio": municipio, "Coordenadas": coordenadas,
+                "Volumen": volumen, "IMT_Total": total, "Infraestructura": p_inf,
+                "Maquinaria": p_maq, "Procesos": p_proc, 
+                "Raw_Data": str(dict_datos)
+            }
+            
+            guardar_datos(registro)
+            st.success(f"✅ Auditoría completada. Índice de Madurez Tecnológica: {total}%")
+            
+            # --- GRÁFICO DE RADAR PARA EL FEEDBACK INMEDIATO ---
+            categories = ['Infraestructura', 'Maquinaria', 'Procesos']
+            fig = go.Figure()
+            fig.add_trace(go.Scatterpolar(
+                r=[p_inf, p_maq, p_proc],
+                theta=categories,
+                fill='toself',
+                name=finca
+            ))
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), showlegend=True)
+            st.plotly_chart(fig)
+
+with tabs[1]:
+    st.subheader("Análisis Comparativo")
+    if os.path.isfile(FILE_NAME):
+        df_view = pd.read_csv(FILE_NAME, sep=";")
+        st.bar_chart(df_view.set_index("Finca")["IMT_Total"])
+        
+        avg_imt = df_view["IMT_Total"].mean()
+        st.metric("Promedio Regional IMT", f"{round(avg_imt, 2)}%")
+    else:
+        st.info("No hay datos para analizar aún.")
+
+with tabs[2]:
+    st.subheader("Gestión de Datos (Exportar para SPSS/Excel)")
+    if os.path.isfile(FILE_NAME):
+        df_hist = pd.read_csv(FILE_NAME, sep=";")
+        st.dataframe(df_hist)
+        
+        st.download_button(
+            label="Descargar Base de Datos Completa",
+            data=df_hist.to_csv(index=False).encode('utf-8'),
+            file_name=f"Auditoria_MATO_Master_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+    else:
+        st.warning("Archivo de base de datos no encontrado.")
