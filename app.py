@@ -1,97 +1,164 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from datetime import datetime
 from streamlit_js_eval import get_geolocation
-from streamlit_gsheets import GSheetsConnection
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Tesis Café - Persistente", layout="centered")
+# --- CONFIGURACIÓN DE LA APP ---
+st.set_page_config(page_title="Tesis Maestría - Café", layout="centered")
 
-# URL de tu Google Sheet (Copia la tuya aquí)
-# IMPORTANTE: La hoja debe tener permisos de EDICIÓN para "Cualquier persona con el enlace"
-SHEET_URL = "https://docs.google.com/spreadsheets/d/TU_ID_DE_HOJA_AQUÍ/edit?usp=sharing"
-
-# --- CONEXIÓN A GOOGLE SHEETS ---
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# --- CSS DE ALTA VISIBILIDAD ---
+# --- DISEÑO PROFESIONAL (Resistente a Modo Noche) ---
 st.markdown("""
     <style>
-    .stApp { background-color: #F4F1EE !important; }
-    h1, h2, h3, label, p, span { color: #2D1B08 !important; }
-    .stButton>button { width: 100%; border-radius: 12px; height: 4em; background-color: #5D4037 !important; color: white !important; font-weight: bold; }
-    .stExpander { background-color: #FFFFFF !important; border: 1px solid #D7CCC8 !important; border-radius: 12px; }
+    /* Estilo para las tarjetas de cada sección */
+    .stColumn > div {
+        background-color: rgba(255, 255, 255, 0.05);
+        padding: 20px;
+        border-radius: 15px;
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        margin-bottom: 20px;
+    }
+    /* Botón de guardado estilo institucional */
+    .stButton>button {
+        width: 100%;
+        border-radius: 25px;
+        height: 3.5em;
+        background-color: #4E342E !important;
+        color: white !important;
+        font-weight: bold;
+        border: none;
+    }
+    /* Títulos de sección */
+    .section-head {
+        color: #795548;
+        font-size: 1.2em;
+        font-weight: bold;
+        border-left: 5px solid #795548;
+        padding-left: 10px;
+        margin-bottom: 15px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("☕ Recolección Permanente")
-st.caption("Los datos se guardan automáticamente en la nube (Google Sheets)")
+# --- INICIALIZACIÓN DE DATOS ---
+if 'db' not in st.session_state:
+    st.session_state['db'] = pd.DataFrame()
 
-# --- LÓGICA DE CAPTURA ---
-with st.expander("⚖️ Consentimiento", expanded=False):
-    consentimiento = st.checkbox("Acepto participar")
+# --- TÍTULO ---
+st.title("🔬 Caracterización Técnica de Beneficiaderos")
+st.caption("Instrumento de Recolección de Datos Primarios - Provincia de Vélez")
 
-if consentimiento:
-    # GPS
-    if st.button("🌐 CAPTURAR GPS"):
-        loc = get_geolocation()
-        if loc:
-            st.session_state['gps'] = f"{loc['coords']['latitude']}, {loc['coords']['longitude']}"
-            st.success("Ubicación fijada")
-    
-    coords = st.text_input("Coordenadas", value=st.session_state.get('gps', ""))
+# --- PESTAÑAS ---
+tab1, tab2 = st.tabs(["📋 Instrumento de Campo", "📊 Análisis y Exportación"])
 
-    with st.form("encuesta_permanente", clear_on_submit=True):
-        finca = st.text_input("Finca / Productor *")
-        muni = st.selectbox("Municipio", ["Vélez", "Guavatá", "Jesús María", "Chipatá", "La Belleza"])
-        hec = st.number_input("Hectáreas", 0.0, 100.0, 1.0)
+with tab1:
+    # 1. GEOPOSICIONAMIENTO
+    st.markdown('<p class="section-head">📍 Localización y GPS</p>', unsafe_allow_html=True)
+    col_gps1, col_gps2 = st.columns([1,1])
+    with col_gps1:
+        if st.button("🌐 Obtener GPS Actual"):
+            loc = get_geolocation()
+            if loc:
+                st.session_state['lat_lon'] = f"{loc['coords']['latitude']}, {loc['coords']['longitude']}"
+                st.success("Coordenadas fijadas")
+    with col_gps2:
+        coords = st.text_input("Coordenadas", value=st.session_state.get('lat_lon', ""), placeholder="Esperando señal...")
+
+    # FORMULARIO DE TESIS
+    with st.form("form_tesis"):
         
-        st.markdown("**Tecnología y Proceso**")
-        maq = st.selectbox("Despulpado", ["Manual", "Motor", "Ecológico"])
-        ferm = st.selectbox("Fermentación", ["Tradicional", "Sumergida", "Anaeróbica"])
-        sec = st.selectbox("Secado", ["Patio", "Marquesina", "Silo"])
-        amb = st.radio("Ambiental", ["Sin tratamiento", "Pozo Séptico", "Filtro Verde"])
+        # DIMENSIÓN 1: DATOS DEL PRODUCTOR
+        st.markdown('<p class="section-head">👤 Dimensión 1: Contexto Productivo</p>', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        finca = c1.text_input("ID / Nombre Finca *")
+        municipio = c2.selectbox("Municipio", ["Vélez", "Guavatá", "Jesús María", "Chipatá", "La Belleza", "Florián", "Bolívar", "Albania", "Puente Nacional"])
         
-        enviar = st.form_submit_button("💾 GUARDAR PERMANENTE")
+        c3, c4 = st.columns(2)
+        hectareas = c3.number_input("Hectáreas totales café", 0.1, 100.0, 1.0)
+        certificacion = c4.selectbox("Certificación Actual", ["Ninguna", "4C", "Rainforest", "Fairtrade", "Orgánico"])
 
-    if enviar:
+        # DIMENSIÓN 2: INFRAESTRUCTURA Y MAQUINARIA
+        st.markdown('<p class="section-head">⚙️ Dimensión 2: Caracterización de Maquinaria</p>', unsafe_allow_html=True)
+        tipo_despulpador = st.selectbox("Tecnología de Despulpado", 
+            ["Pechero Tradicional (Manual/Motor)", "Cilindro Horizontal", "Módulo Ecológico Despulpado en Seco", "Módulo Compacto (BECO)"])
+        
+        c5, c6 = st.columns(2)
+        potencia = c5.selectbox("Fuente de Energía", ["Manual", "Motor Eléctrico < 1HP", "Motor Eléctrico > 1HP", "Motor Gasolina"])
+        antiguedad = c6.number_input("Edad del equipo (Años)", 0, 50, 5)
+        
+        mantenimiento = st.select_slider("Frecuencia de Mantenimiento / Calibración", 
+            options=["Nunca", "Cada Cosecha", "Cada Pase", "Preventivo Programado"])
+
+        # DIMENSIÓN 3: PROCESAMIENTO Y AGUA
+        st.markdown('<p class="section-head">🧪 Dimensión 3: Dinámica de Procesos</p>', unsafe_allow_html=True)
+        c7, c8 = st.columns(2)
+        tiempo_ferm = c7.slider("Tiempo Fermentación (Horas)", 6, 72, 18)
+        control_punto = c8.selectbox("Control de Fermentación", ["Empírico (Tacto)", "Fermaestro", "Sensor de pH", "Cronometrado"])
+        
+        consumo_agua = st.selectbox("Uso de agua en el proceso", 
+            ["Alto (Canal de correteo)", "Medio (Lavado en tanque)", "Bajo (Lavadora mecánica)", "Nulo (Beneficio Natural/Honey)"])
+
+        # DIMENSIÓN 4: SECADO Y CONSERVACIÓN
+        st.markdown('<p class="section-head">☀️ Dimensión 4: Secado y Calidad</p>', unsafe_allow_html=True)
+        c9, c10 = st.columns(2)
+        tec_secado = c9.selectbox("Tecnología de Secado", ["Suelo/Patio", "Marquesina Tradicional", "Marquesina Ventilada (Zarandas)", "Silo Mecánico"])
+        tiempo_secado = c10.number_input("Días promedio de secado", 1, 15, 5)
+        
+        control_humedad = st.radio("¿Mide humedad final?", ["No realiza (Al tacto)", "Sí, con determinador manual", "Sí, con medidor digital (10-12%)"], horizontal=True)
+
+        # DIMENSIÓN 5: GESTIÓN AMBIENTAL
+        st.markdown('<p class="section-head">🌱 Dimensión 5: Sostenibilidad</p>', unsafe_allow_html=True)
+        tratamiento_aguas = st.selectbox("Manejo de Aguas Mieles", 
+            ["Vertimiento Directo", "Pozo Séptico", "Sistema de Filtros Verdes", "SMTA (Sistema de Tratamiento Modular)"])
+        manejo_pulpa = st.selectbox("Manejo de Pulpa de Café", ["Sin tratamiento", "Compostaje Simple", "Lombricultura", "Uso como Biomasa"])
+
+        # BOTÓN DE GUARDADO
+        st.divider()
+        submit = st.form_submit_button("📥 REGISTRAR CARACTERIZACIÓN COMPLETA")
+
+    if submit:
         if not finca:
-            st.error("Falta el nombre de la finca")
+            st.error("El nombre de la finca es obligatorio para el registro de la tesis.")
         else:
-            try:
-                # 1. Leer datos actuales de la nube
-                existing_data = conn.read(spreadsheet=SHEET_URL, usecols=list(range(13)))
-                
-                # 2. Crear nueva fila
-                nuevo_registro = pd.DataFrame([{
-                    "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "Finca": finca,
-                    "Municipio": muni,
-                    "Coordenadas": coords,
-                    "Hectareas": hec,
-                    "Tec_Despulpado": maq,
-                    "Edad_Maq": 0, # Puedes agregar el input si lo deseas
-                    "Fermentacion": ferm,
-                    "Lavado": "N/A",
-                    "Secado": sec,
-                    "Control_Hum": "N/A",
-                    "Manejo_Pulpa": "N/A",
-                    "Ambiental": amb
-                }])
-                
-                # 3. Concatenar y actualizar
-                updated_df = pd.concat([existing_data, nuevo_registro], ignore_index=True)
-                conn.update(spreadsheet=SHEET_URL, data=updated_df)
-                
-                st.success("✅ ¡Datos enviados a Google Sheets!")
-                st.balloons()
-            except Exception as e:
-                st.error(f"Error al guardar: {e}")
-                st.info("Asegúrate de que la hoja de Google sea pública para edición.")
+            # Crear diccionario de datos (Puntajes para análisis posterior)
+            nuevo_dato = {
+                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Finca": finca, "Municipio": municipio, "Coordenadas": coords,
+                "Hectareas": hectareas, "Certificacion": certificacion,
+                "Tec_Despulpado": tipo_despulpador, "Energia": potencia,
+                "Edad_Maq": antiguedad, "Mantenimiento": mantenimiento,
+                "Horas_Ferm": tiempo_ferm, "Control_Ferm": control_punto,
+                "Uso_Agua": consumo_agua, "Tec_Secado": tec_secado,
+                "Dias_Secado": tiempo_secado, "Control_Humedad": control_humedad,
+                "Tratamiento_Aguas": tratamiento_aguas, "Manejo_Pulpa": manejo_pulpa
+            }
+            
+            st.session_state['db'] = pd.concat([st.session_state['db'], pd.DataFrame([nuevo_dato])], ignore_index=True)
+            st.success("✅ Registro guardado en la memoria local.")
+            st.balloons()
 
-# --- BOTÓN DE RESPALDO LOCAL ---
-st.divider()
-st.subheader("📊 Consulta de Avance")
-if st.button("🔄 Ver datos actuales en la nube"):
-    df_cloud = conn.read(spreadsheet=SHEET_URL)
-    st.dataframe(df_cloud)
+with tab2:
+    if not st.session_state['db'].empty:
+        df = st.session_state['db']
+        st.subheader("📊 Avance de la Investigación")
+        st.metric("Fincas Caracterizadas", len(df))
+        
+        # Gráfico de rigor para la tesis: Distribución por Tecnología
+        fig = go.Figure(data=[go.Pie(labels=df['Tec_Despulpado'].value_counts().index, 
+                                   values=df['Tec_Despulpado'].value_counts().values, hole=.3)])
+        fig.update_layout(title_text="Distribución Tecnológica de Despulpado", height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.divider()
+        st.dataframe(df, use_container_width=True)
+        
+        # DESCARGA
+        csv = df.to_csv(index=False, sep=";").encode('utf-8-sig')
+        st.download_button("📥 DESCARGAR BASE DE DATOS (CSV/EXCEL)", csv, 
+                           f"Matriz_Datos_Tesis_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+    else:
+        st.info("No hay datos registrados todavía.")
+
+# PIE DE PÁGINA PROFESIONAL
+st.markdown("---")
+st.caption("Instrumento desarrollado para fines de Investigación de Maestría. Todos los derechos reservados.")
