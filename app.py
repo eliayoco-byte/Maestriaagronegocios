@@ -1,245 +1,167 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+from streamlit_js_eval import get_geolocation
 
-# ------------------------------------------------
-# CONFIGURACIÓN
-# ------------------------------------------------
+# --- CONFIGURACIÓN DE PÁGINA MÓVIL ---
+st.set_page_config(page_title="Investigación Café - Vélez", page_icon="☕", layout="centered")
 
-st.set_page_config(
-    page_title="Auditoría Café",
-    page_icon="☕",
-    layout="centered"
-)
+# CSS para optimizar la interfaz en celulares (botones grandes y legibles)
+st.markdown("""
+    <style>
+    .stButton>button { width: 100%; border-radius: 12px; height: 3.5em; background-color: #4E342E; color: white; font-weight: bold; }
+    .stExpander { border: 1px solid #795548; border-radius: 12px; margin-bottom: 8px; background-color: #fdfaf8; }
+    .stRadio > div { flex-direction: column; gap: 10px; }
+    label { font-size: 1.1em !important; font-weight: bold !important; color: #3E2723; }
+    </style>
+    """, unsafe_allow_html=True)
 
-st.title("☕ Auditoría de Beneficiadero")
-st.write("Evaluación rápida del sistema de beneficio del café")
+# --- INICIALIZAR BASE DE DATOS EN SESIÓN ---
+if 'db_tesis' not in st.session_state:
+    st.session_state['db_tesis'] = pd.DataFrame()
 
-# ------------------------------------------------
-# BASE DE DATOS
-# ------------------------------------------------
+# --- TÍTULO E INTRODUCCIÓN ---
+st.title("🔬 Caracterización Técnica de Beneficiaderos")
+st.caption("Instrumento de Recolección de Datos Primarios | Tesis de Maestría")
 
-if "datos" not in st.session_state:
-    st.session_state["datos"] = pd.DataFrame()
+# --- SISTEMA DE NAVEGACIÓN ---
+menu = st.tabs(["📝 Formulario de Campo", "📊 Datos Acumulados"])
 
-# ------------------------------------------------
-# FUNCION IMT
-# ------------------------------------------------
+with menu[0]:
+    # 1. CONSENTIMIENTO Y ÉTICA
+    with st.expander("⚖️ Consentimiento Informado", expanded=True):
+        st.write("Esta encuesta recoge datos para fines de investigación académica. Los datos son confidenciales.")
+        consentimiento = st.checkbox("Acepto participar en la investigación")
 
-def calcular_imt(r):
+    if consentimiento:
+        # 2. GEOLOCALIZACIÓN (GPS REAL)
+        st.subheader("📍 Ubicación Geográfica")
+        col_gps, col_ver = st.columns([1, 1])
+        
+        with col_gps:
+            if st.button("🌐 CAPTURAR GPS"):
+                loc = get_geolocation()
+                if loc:
+                    lat = loc['coords']['latitude']
+                    lon = loc['coords']['longitude']
+                    st.session_state['temp_gps'] = f"{lat}, {lon}"
+                    st.success("📍 Ubicación obtenida")
+                else:
+                    st.warning("Activa el GPS y da permisos al navegador.")
+        
+        coords = st.text_input("Coordenadas (Lat, Long)", value=st.session_state.get('temp_gps', ""), placeholder="Esperando señal...")
 
-    d1 = (r["r_tolva"] + r["r_aseo"]) / 6 * 100
-    d2 = (r["r_tec_des"] + r["r_calib"] + r["r_perdida"]) / 9 * 100
-    d3 = (r["r_metodo_f"] + r["r_control_f"] + r["r_lavado"]) / 9 * 100
-    d4 = (r["r_tipo_sec"] + r["r_humedad"]) / 6 * 100
-    d5 = (r["r_pulpa"] + r["r_aguas_mieles"]) / 6 * 100
+        # 3. FORMULARIO POR DIMENSIONES (EXPANDERS PARA MÓVIL)
+        with st.form("encuesta_maestria", clear_on_submit=True):
+            
+            # DIMENSIÓN A: IDENTIFICACIÓN
+            with st.expander("👤 A. IDENTIFICACIÓN Y ENTORNO", expanded=True):
+                finca = st.text_input("Nombre de la Finca / Productor *")
+                municipio = st.selectbox("Municipio", ["Vélez", "Guavatá", "Jesús María", "Chipatá", "La Belleza", "Florián", "Bolívar", "Albania", "Puente Nacional"])
+                vereda = st.text_input("Vereda")
+                hectareas = st.number_input("Hectáreas en Café", min_value=0.0, step=0.1)
+                variedades = st.multiselect("Variedades instaladas", ["Castillo", "Cenicafé 1", "Colombia", "Típica", "Tabi", "Borbón", "Caturra"])
 
-    imt = (d1*0.15)+(d2*0.25)+(d3*0.25)+(d4*0.20)+(d5*0.15)
+            # DIMENSIÓN B: INFRAESTRUCTURA DE RECEPCIÓN
+            with st.expander("🏗️ B. INFRAESTRUCTURA DE RECEPCIÓN"):
+                material_tolva = st.radio("Material de Tolvas/Tanques:", 
+                    ["Madera / Tierra / Ladrillo rústico", "Cemento enchapado / Cerámica", "Acero Inoxidable / Epóxico"])
+                estado_higiene = st.select_slider("Estado de higiene del beneficiadero:", options=["Crítico", "Aceptable", "Excelente"])
 
-    return round(imt,2), d1,d2,d3,d4,d5
+            # DIMENSIÓN C: PROCESO DE DESPULPADO (MECÁNICO)
+            with st.expander("⚙️ C. CARACTERIZACIÓN DESPULPADO"):
+                tipo_maq = st.selectbox("Tecnología de Despulpado:", ["Pechero Manual", "Despulpador de Pechero Eléctrico", "Cilindro Horizontal", "Módulo Ecológico (BECO / Compacto)"])
+                antiguedad = st.number_input("Años de antigüedad de la maquinaria:", 0, 50, 5)
+                calibracion = st.radio("¿Realiza calibración antes de cosecha?", ["Nunca", "Ocasionalmente", "Siempre (Antes de cada pase)"])
+                presencia_grano = st.radio("Presencia de grano en la pulpa:", ["Abundante", "Moderada", "Nula / Mínima"])
 
-# ------------------------------------------------
-# FORMULARIO
-# ------------------------------------------------
+            # DIMENSIÓN D: FERMENTACIÓN Y LAVADO
+            with st.expander("🧪 D. FERMENTACIÓN Y LAVADO"):
+                metodo_ferm = st.selectbox("Método de Fermentación:", ["Tanque tradicional seco", "Fermentación sumergida", "Tanque con control térmico", "Bolsas (Anaeróbico)"])
+                punto_ferm = st.radio("Determinación del punto de lavado:", ["Empírico (Tacto/Olor/Palo)", "Tiempo fijo (Horas)", "Instrumentado (Fermaestro / pH-metro)"])
+                lavado = st.selectbox("Técnica de Lavado:", ["Canal de correteo", "Lavado en tanque (3 cambios)", "Lavadora mecánica / Bomba"])
 
-with st.form("encuesta"):
+            # DIMENSIÓN E: SECADO Y CALIDAD
+            with st.expander("☀️ E. SECADO Y CONSERVACIÓN"):
+                tipo_secado = st.selectbox("Tipo de Secado Principal:", ["Patio de cemento / El suelo", "Eldas / Carros", "Marquesina / Casa Elva", "Silo (Mecánico)"])
+                control_hum = st.radio("Control de Humedad Final:", ["Visual / Morder el grano", "Medidor de Humedad Digital", "No realiza control"])
 
-    st.subheader("Datos de la finca")
+            # DIMENSIÓN F: GESTIÓN AMBIENTAL
+            with st.expander("🌳 F. GESTIÓN DE RESIDUOS"):
+                manejo_pulpa = st.selectbox("Manejo de la Pulpa:", ["Botadero abierto", "Abono orgánico / Compostaje", "Lombricultura", "Venta/Uso energético"])
+                manejo_aguas = st.radio("Tratamiento Aguas Mieles:", ["Vertimiento directo a quebrada", "Pozo séptico", "Sistemas SMTA / Filtros verdes"])
 
-    finca = st.text_input("Nombre finca / productor")
+            # BOTÓN FINAL
+            submit = st.form_submit_button("📥 REGISTRAR INFORMACIÓN")
 
-    municipio = st.selectbox(
-        "Municipio",
-        ["Vélez","Guavatá","Jesús María","Chipatá","La Belleza","Florián"]
-    )
+        if submit:
+            if not finca:
+                st.error("⚠️ El nombre de la finca es obligatorio.")
+            else:
+                # CREAR REGISTRO PARA LA TESIS
+                nuevo_registro = {
+                    "Fecha_Captura": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "Finca": finca,
+                    "Municipio": municipio,
+                    "Vereda": vereda,
+                    "Coordenadas": coords,
+                    "Hectareas": hectareas,
+                    "Variedades": ", ".join(variedades),
+                    "Material_Tolva": material_tolva,
+                    "Higiene": estado_higiene,
+                    "Tec_Despulpado": tipo_maq,
+                    "Edad_Maq": antiguedad,
+                    "Calibracion": calibracion,
+                    "Grano_en_Pulpa": presencia_grano,
+                    "Metodo_Ferm": metodo_ferm,
+                    "Control_Ferm": punto_ferm,
+                    "Tec_Lavado": lavado,
+                    "Tipo_Secado": tipo_secado,
+                    "Control_Hum": control_hum,
+                    "Manejo_Pulpa": manejo_pulpa,
+                    "Manejo_Aguas": manejo_aguas
+                }
+                
+                # GUARDAR
+                st.session_state['db_tesis'] = pd.concat([st.session_state['db_tesis'], pd.DataFrame([nuevo_registro])], ignore_index=True)
+                st.success(f"✅ Datos de la finca '{finca}' guardados con éxito.")
+                st.balloons()
+    else:
+        st.info("Debe aceptar el consentimiento informado para iniciar la recolección.")
 
-    altura = st.number_input("Altitud (msnm)",500,2500,1500)
+with menu[1]:
+    st.subheader("📊 Base de Datos de la Tesis")
+    
+    if not st.session_state['db_tesis'].empty:
+        df = st.session_state['db_tesis']
+        
+        # Resumen rápido
+        st.write(f"Total registros capturados: **{len(df)}**")
+        st.dataframe(df, use_container_width=True)
+        
+        st.divider()
+        
+        # EXPORTACIÓN
+        st.subheader("📥 Exportar para Análisis")
+        st.write("Descarga este archivo para abrirlo en Excel, SPSS o R.")
+        
+        # Generamos CSV con codificación para Excel
+        csv = df.to_csv(index=False, sep=";").encode('utf-8-sig')
+        
+        st.download_button(
+            label="Descargar CSV para Excel",
+            data=csv,
+            file_name=f"Tesis_Cafe_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+        )
+        
+        if st.button("🗑️ Borrar sesión actual"):
+            st.session_state['db_tesis'] = pd.DataFrame()
+            st.rerun()
+    else:
+        st.info("No hay datos capturados en esta sesión todavía.")
 
-    st.subheader("Ubicación")
-
-    lat = st.number_input("Latitud",value=6.0,format="%.6f")
-    lon = st.number_input("Longitud",value=-73.5,format="%.6f")
-
-    st.divider()
-
-    st.subheader("Infraestructura")
-
-    r_tolva = st.radio(
-        "Tolvas",
-        [1,2,3],
-        format_func=lambda x:["Madera","Cemento","Acero"][x-1]
-    )
-
-    r_aseo = st.radio(
-        "Higiene",
-        [1,2,3],
-        format_func=lambda x:["Sin limpieza","Básica","Desinfección"][x-1]
-    )
-
-    st.subheader("Despulpado")
-
-    r_tec_des = st.radio(
-        "Tecnología",
-        [1,2,3],
-        format_func=lambda x:["Pechero","Cilindro","Ecológico"][x-1]
-    )
-
-    r_calib = st.radio(
-        "Calibración",
-        [1,2,3],
-        format_func=lambda x:["Mala","Aceptable","Óptima"][x-1]
-    )
-
-    r_perdida = st.radio(
-        "Pérdida de grano",
-        [1,2,3],
-        format_func=lambda x:["Alta","Media","Baja"][x-1]
-    )
-
-    st.subheader("Fermentación")
-
-    r_metodo_f = st.radio(
-        "Tipo tanque",
-        [1,2,3],
-        format_func=lambda x:["Rectangular","Circular","Acero"][x-1]
-    )
-
-    r_control_f = st.radio(
-        "Control fermentación",
-        [1,2,3],
-        format_func=lambda x:["Visual","Tiempo","Sensores"][x-1]
-    )
-
-    r_lavado = st.radio(
-        "Sistema lavado",
-        [1,2,3],
-        format_func=lambda x:["Correteo","Tanque","Lavadora"][x-1]
-    )
-
-    st.subheader("Secado")
-
-    r_tipo_sec = st.radio(
-        "Tipo secado",
-        [1,2,3],
-        format_func=lambda x:["Patio","Marquesina","Silo"][x-1]
-    )
-
-    r_humedad = st.radio(
-        "Control humedad",
-        [1,2,3],
-        format_func=lambda x:["Tanteo","Manual","Digital"][x-1]
-    )
-
-    st.subheader("Gestión ambiental")
-
-    r_pulpa = st.radio(
-        "Manejo pulpa",
-        [1,2,3],
-        format_func=lambda x:["Botadero","Fosa","Compostaje"][x-1]
-    )
-
-    r_aguas_mieles = st.radio(
-        "Aguas mieles",
-        [1,2,3],
-        format_func=lambda x:["Vertimiento","Pozo","Tratamiento"][x-1]
-    )
-
-    guardar = st.form_submit_button("Guardar auditoría")
-
-# ------------------------------------------------
-# GUARDAR
-# ------------------------------------------------
-
-if guardar:
-
-    respuestas = {
-        "r_tolva":r_tolva,
-        "r_aseo":r_aseo,
-        "r_tec_des":r_tec_des,
-        "r_calib":r_calib,
-        "r_perdida":r_perdida,
-        "r_metodo_f":r_metodo_f,
-        "r_control_f":r_control_f,
-        "r_lavado":r_lavado,
-        "r_tipo_sec":r_tipo_sec,
-        "r_humedad":r_humedad,
-        "r_pulpa":r_pulpa,
-        "r_aguas_mieles":r_aguas_mieles
-    }
-
-    imt,d1,d2,d3,d4,d5 = calcular_imt(respuestas)
-
-    nuevo = {
-        "fecha":datetime.now(),
-        "finca":finca,
-        "municipio":municipio,
-        "lat":lat,
-        "lon":lon,
-        "IMT":imt,
-        "infraestructura":d1,
-        "maquinaria":d2,
-        "fermentacion":d3,
-        "secado":d4,
-        "ambiental":d5
-    }
-
-    st.session_state["datos"] = pd.concat(
-        [st.session_state["datos"],pd.DataFrame([nuevo])],
-        ignore_index=True
-    )
-
-    st.success(f"Auditoría guardada — IMT {imt}%")
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatterpolar(
-        r=[d1,d2,d3,d4,d5],
-        theta=["Infraestructura","Maquinaria","Fermentación","Secado","Ambiental"],
-        fill="toself"
-    ))
-
-    fig.update_layout(polar=dict(radialaxis=dict(range=[0,100])))
-
-    st.plotly_chart(fig)
-
-# ------------------------------------------------
-# MAPA
-# ------------------------------------------------
-
-if not st.session_state["datos"].empty:
-
-    st.subheader("Mapa de fincas evaluadas")
-
-    df = st.session_state["datos"]
-
-    fig = px.scatter_mapbox(
-        df,
-        lat="lat",
-        lon="lon",
-        hover_name="finca",
-        hover_data=["municipio","IMT"],
-        color="IMT",
-        size="IMT",
-        zoom=7,
-        height=450,
-        color_continuous_scale="YlGn"
-    )
-
-    fig.update_layout(mapbox_style="open-street-map")
-
-    st.plotly_chart(fig,use_container_width=True)
-
-    st.subheader("Datos registrados")
-
-    st.dataframe(df)
-
-    csv = df.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        "Descargar base de datos",
-        csv,
-        "auditoria_cafe.csv",
-        "text/csv"
-    )
+# PIE DE PÁGINA
+st.markdown("---")
+st.caption("Investigación desarrollada por el autor para optar al título de Magíster.")
